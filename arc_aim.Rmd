@@ -278,7 +278,7 @@ sum(surfaces$SoilKey %in% surfaces_wet$SoilKey)
 wet_test <- mnsl_remove(surfaces_wet[ , "HorizonColorMoist"])
 notext_plot_mnsl(sample(wet_test, 400))
 ```
-
+test
 ```{r}
 points_county %>% 
   group_by(State) %>% 
