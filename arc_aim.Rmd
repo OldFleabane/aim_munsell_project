@@ -1,0 +1,297 @@
+---
+title: "arc_aim_rmd"
+author: "Jonathan Amegin"
+date: "2024-09-05"
+output: html_document
+---
+
+```{r packages}
+library(dplyr)
+library(janitor)
+library(sf)
+library(stars)
+library(munsell)
+```
+```{r load gdb}
+
+##st_read("raw_data/BLM AIM 2023 TerrADat.gdb", layer = "tblSoilPitHorizons")
+
+horizons <- read.csv("tblSoilPitHorizons.csv")
+
+dry_h <- horizons[complete.cases(horizons[, 8]),]
+surfaces <- dry_h %>% 
+  filter(HorizonDepthUpper == 0)
+surfaces <- surfaces[,1:11]
+
+
+
+```
+
+munsell needs the Chroma (3rd number) to be even. Need to remove all entries with odd chromas
+```{r}
+library(stringr) #allows to look at the last character in a string
+
+#check last character (as a number) in the surface color for any remainder after
+#dividing by 2. Makes sure it is even. 
+surfaces_even <- surfaces[which((as.numeric(str_sub(surfaces[,8], -1)) %% 2) == 0), ]
+
+check_mnsl(surfaces_even[ ,8])
+```
+```{r code chunck from mnsl}
+#this function is taken and altered from the 'check_mnsl' function in the 'munsell' package
+# it returns the row numbers of all of the incorrectly formatted munsell color entries from a column.
+mnsl_remove <- function (col) 
+{
+  #index bad formatting
+    col_na <- na.exclude(col)
+    col <- toupper(as.vector(col_na))
+    right.format <- grep("^[N]|([0-9]?.?[0-9][A-Z]{1,2})[ ][0-9]?.?[0-9]/[0-9]?.?[0-9]{1,2}$", 
+        col)
+    if (length(right.format) != length((col))) {
+        if (length(right.format) == 0) {
+            bad.cols <- col
+        }
+        else {
+            bad.cols <- col[-right.format]
+        }
+    new_col <- c(which(col %in% bad.cols))  ##indexes the column with bad formatting
+    }
+    
+  #index bad hue names
+     hues <- gsub("[0-9 /.]", "", col)      
+    act.hues <- c("N", "R", "YR", "Y", "GY", "G", "BG", "B", 
+        "PB", "P", "RP")
+    good.hue <- hues %in% act.hues
+    if (!all(good.hue)) {
+      bad.hue <- hues[!good.hue]
+      new_col <- append(new_col, which(hues %in% bad.hue))
+        
+    }
+    
+    
+    col.split <- lapply(strsplit(col, "/"), function(x) unlist(strsplit(x, 
+        " ")))
+    col.split <- lapply(col.split, gsub, pattern = "[A-Z]", replacement = "")
+    step <- as.numeric(sapply(col.split, "[", 1))
+    values <- as.numeric(sapply(col.split, "[", 2))
+    chromas <- as.numeric(sapply(col.split, "[", 3))
+    act.steps <- c(seq(2.5, 10, by = 2.5), NA)
+    good.step <- step %in% act.steps
+    
+    if (!all(good.step)) {
+        bad.step <- step[!good.step]
+        new_col <- append(new_col, which(step %in% bad.step))
+    }
+    
+    good.value <- values == round(values) & values <= 10 & values >= 0
+        
+    if (!all(good.value)) {
+        bad.value <- values[!good.value]
+        new_col <- append(new_col, which(values %in% bad.value))
+    }
+    
+    good.chroma <- (chromas%%2) == 0
+    if (!all(good.chroma)) {
+        bad.chroma <- chromas[!good.chroma]
+        new_col <- append(new_col, which(chromas %in% bad.chroma))   
+    }
+   col[-new_col]
+}
+  
+
+
+```
+
+```{r}
+#source code for the function "check_mnsl"
+
+function (col) 
+{
+    col_na <- na.exclude(col)
+    col <- toupper(as.vector(col_na))
+    right.format <- grep("^[N]|([0-9]?.?[0-9][A-Z]{1,2})[ ][0-9]?.?[0-9]/[0-9]?.?[0-9]{1,2}$", 
+        col)
+    if (length(right.format) != length((col))) {
+        if (length(right.format) == 0) {
+            bad.cols <- paste(col, collapse = ", ")
+        }
+        else {
+            bad.cols <- paste(col[-right.format], collapse = ", ")
+        }
+        stop("some of your colours are not correctly formatted:", 
+            bad.cols)
+    }
+    hues <- gsub("[0-9 /.]", "", col)
+    act.hues <- c("N", "R", "YR", "Y", "GY", "G", "BG", "B", 
+        "PB", "P", "RP")
+    good.hue <- hues %in% act.hues
+    if (!all(good.hue)) {
+        bad.hue <- paste(hues[!good.hue], "in", col[!good.hue], 
+            collapse = "; ")
+        act.hue.str <- paste(act.hues, collapse = ", ")
+        stop("you have specified invalid hue names: ", bad.hue, 
+            "\n hues should be one of ", act.hue.str)
+    }
+    col.split <- lapply(strsplit(col, "/"), function(x) unlist(strsplit(x, 
+        " ")))
+    col.split <- lapply(col.split, gsub, pattern = "[A-Z]", replacement = "")
+    step <- as.numeric(sapply(col.split, "[", 1))
+    values <- as.numeric(sapply(col.split, "[", 2))
+    chromas <- as.numeric(sapply(col.split, "[", 3))
+    act.steps <- c(seq(2.5, 10, by = 2.5), NA)
+    good.step <- step %in% act.steps
+    if (!all(good.step)) {
+        bad.step <- paste(step[!good.step], "in", col[!good.step], 
+            collapse = "; ")
+        act.step.str <- paste(act.steps, collapse = ", ")
+        stop("you have specified invalid hue steps: ", bad.step, 
+            "\n hues steps should be one of ", act.step.str)
+    }
+    good.value <- values == round(values) & values <= 10 & values >= 0
+        
+    if (!all(good.value)) {
+        bad.value <- paste(values[!good.value], "in", col[!good.value], 
+            collapse = "; ")
+        stop("some colours have values that are not integers between 0 and 10: ", 
+            bad.value)
+    }
+    good.chroma <- (chromas%%2) == 0
+    if (!all(good.chroma)) {
+        bad.chroma <- paste(chromas[!good.chroma], "in", col[!good.chroma], 
+            collapse = "; ")
+        stop("some colours have chromas that are not multiples of two: ", 
+            bad.chroma)
+    }
+    na_handle(col_na, col)
+}
+```
+
+
+```{r code chunck from mnsl}
+test <- mnsl_remove(surfaces[ , "HorizonColorDry"])
+
+plot_mnsl(test[c(250:500)])
+
+  
+```
+
+
+```{r}
+tes_function <- function(col){
+  #index bad formatting
+    col_na <- na.exclude(col)
+    col <- toupper(as.vector(col_na))
+    right.format <- grep("^[N]|([0-9]?.?[0-9][A-Z]{1,2})[ ][0-9]?.?[0-9]/[0-9]?.?[0-9]{1,2}$", 
+        col)
+    if (length(right.format) != length((col))) {
+        if (length(right.format) == 0) {
+            bad.cols <- col
+        }
+        else {
+            bad.cols <- col[-right.format]
+        }
+    new_col <- c(which(col %in% bad.cols))  ##indexes the column with bad formatting
+    }
+    clean_col <- col[-new_col]
+col.split <- lapply(strsplit(clean_col, "/"), function(x) unlist(strsplit(x, 
+        " ")))
+    col.split <- lapply(col.split, gsub, pattern = "[A-Z]", replacement = "")
+    step <- as.numeric(sapply(col.split, "[", 1))
+    values <- as.numeric(sapply(col.split, "[", 2))
+    chromas <- as.numeric(sapply(col.split, "[", 3))
+    act.steps <- c(seq(2.5, 10, by = 2.5), NA)
+    
+   chromas
+   good.chroma <- (chromas%%2) == 0
+    if (!all(good.chroma)) {             #Switch `all` to `any` to avoid NA issues?
+        bad.chroma <- paste(chromas[!good.chroma], "in", col[!good.chroma], 
+            collapse = "; ")
+        stop("some colours have chromas that are not multiples of two: ", 
+            bad.chroma)
+    }else{paste("all good")}
+}
+
+tes_function(surfaces[,8])
+```
+
+
+
+```{r}
+notext_plot_mnsl<- function (cols, back.col = "white", ...) 
+{
+    if (!requireNamespace("ggplot2", quietly = TRUE)) {
+        stop("ggplot2 needed for this function to work. Please install it.", 
+            call. = FALSE)
+    }
+    add.ops <- NULL
+    if (length(cols) > 1) {
+        add.ops <- list(ggplot2::facet_wrap(~num))
+    }
+    cols <- check_mnsl(cols)
+    cols <- in_gamut(cols, ...)
+    df <- data.frame(num = 1:length(cols), names = factor(cols, 
+        levels = c(unique(cols))), hex = mnsl2hex(cols), x = 0, 
+        y = 0, stringsAsFactors = FALSE)
+    df$labels <- factor(df$names, levels = c(unique(cols), "NA"))
+    df$labels[is.na(df$labels)] <- "NA"
+    ggplot2::ggplot(data = df, ggplot2::aes(x = x, y = y)) + 
+      ggplot2::geom_tile(ggplot2::aes(fill = hex)) + 
+      add.ops + 
+      ggplot2::scale_x_continuous(expand = c(0, 0)) + 
+      ggplot2::scale_y_continuous(expand = c(0,0)) + 
+      ggplot2::coord_fixed() + 
+      ggplot2::scale_fill_identity() + 
+      ggplot2::scale_colour_identity() + 
+        ggplot2::theme(strip.background = ggplot2::element_blank(), 
+            strip.text = ggplot2::element_blank(), 
+            axis.text = ggplot2::element_blank(),
+            axis.ticks = ggplot2::element_blank(),
+            axis.title = ggplot2::element_blank())
+}
+```
+
+```{r}
+notext_plot_mnsl(sample(test, 100))
+```
+```{r}
+##st_layers("raw_data/BLM AIM 2023 TerrADat.gdb")
+pits <- read.csv("tblSoilPits.csv")
+
+points <- left_join(surfaces, pits[, c("SoilKey", "Latitude", "Longitude", "PlotKey")])
+
+plots <-  read.csv("tblPlots.csv")
+
+points_county <- left_join(points, plots[, c("PlotKey", "PlotID", "State", "County")])
+
+  
+```
+
+```{r}
+horizons_key <- left_join(horizons, pits[, c("SoilKey", "Latitude", "Longitude", "PlotKey")], by = "SoilKey")
+
+wet_h <- horizons[complete.cases(horizons[, 9]),]
+surfaces_wet <- filter(wet_h, HorizonDepthUpper == 0) 
+surfaces_wet <- surfaces_wet[,1:11]
+
+sum(surfaces$SoilKey %in% surfaces_wet$SoilKey)
+
+wet_test <- mnsl_remove(surfaces_wet[ , "HorizonColorMoist"])
+notext_plot_mnsl(sample(wet_test, 400))
+```
+
+```{r}
+points_county %>% 
+  group_by(State) %>% 
+  summarize( n = n_distinct(PlotID))
+
+  
+  
+if (length(mnsl_remove(filter(points_county, State == "CO")$HorizonColorDry)) >= 30 ){
+    notext_plot_mnsl(sample(mnsl_remove(filter(points_county, State == "CO")$HorizonColorDry), 30))
+}else{notext_plot_mnsl(sample(mnsl_remove(filter(points_county, State == "CO")$HorizonColorDry),
+                              length(mnsl_remove(filter(points_county, State == "CO")$HorizonColorDry))))
+}
+
+
+```
+
