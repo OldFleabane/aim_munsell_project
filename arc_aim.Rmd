@@ -7,6 +7,7 @@ output: html_document
 
 ```{r packages}
 library(dplyr)
+library(ggplot2)
 library(janitor)
 library(sf)
 library(stars)
@@ -292,6 +293,58 @@ if (length(mnsl_remove(filter(points_county, State == "CO")$HorizonColorDry)) >=
                               length(mnsl_remove(filter(points_county, State == "CO")$HorizonColorDry))))
 }
 
+
+```
+```{r}
+install.packages("maps")
+library(maps)
+
+state_map <- map(database = "state", regions = c("Colorado", "Utah", "Nevada", "Arizona", "California", "Idaho","New Mexico","Oregon", "Washington", "Wyoming", "Montana", "North Dakota", "South Dakota"), fill = TRUE, col = 2)
+
+map(state_map)
+
+
+points_sf <- points_county[which((str_detect(as.character(points_county$Latitude), "^..\\.")) & 
+                                 str_detect(as.character(points_county$Longitude), "^\\-...\\.")),]
+points_sf <- points_sf[complete.cases(points_sf$HorizonColorDry),]
+points_sf <- points_sf[which(points_sf$HorizonColorDry %in% mnsl_remove(points_sf$HorizonColorDry)),]
+points_sf <- points_sf[is.na(points_sf$Longitude),]
+points_sf <- st_as_sf(points_county, coords = c("Longitude", "Latitude"))
+
+state_map_sf <- st_as_sf(state_map)
+
+color_plot <- points_sf %>% 
+  ggplot()+
+  geom_point(aes(x = Longitude, y = Latitude, color = mnsl2hex(HorizonColorDry)))+
+  scale_color_identity() 
+  
+  
+states_plot <- ggplot(state_map_sf)+
+  geom_sf()
+
+colored_map <- states_plot + 
+  geom_point(data = points_sf, aes(x = Longitude, y = Latitude, color = mnsl2hex(HorizonColorDry)))+
+  scale_color_identity()+
+  theme_void()+
+  ggtitle("Dry Soil Surface Colors from AIM data")
+  
+ ggsave(filename = "soil_color_map.jpeg", plot = colored_map)
+
+ 
+ 
+ 
+ 
+ points_wet <- points_county[which((str_detect(as.character(points_county$Latitude), "^..\\.")) & 
+                                 str_detect(as.character(points_county$Longitude), "^\\-...\\.")),]
+points_wet <- points_wet[complete.cases(points_wet$HorizonColorMoist),]
+points_wet <- points_wet[which(points_wet$HorizonColorMoist %in% mnsl_remove(points_wet$HorizonColorMoist)),]
+
+ 
+states_plot + 
+  geom_point(data = filter(points_wet, Texture == "S"), aes(x = Longitude, y = Latitude, color = mnsl2hex(HorizonColorMoist)))+
+  scale_color_identity()+
+  theme_void()+
+  ggtitle("Moist Soil Surface Colors from AIM data")
 
 ```
 
